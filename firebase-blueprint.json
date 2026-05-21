@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "admin": {
+      "title": "Admin",
+      "description": "Information about system administrators",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth UID" },
+        "email": { "type": "string", "description": "Email address" }
+      },
+      "required": ["uid", "email"]
+    },
+    "user": {
+      "title": "User",
+      "description": "User profile with role details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth UID" },
+        "email": { "type": "string", "description": "Email address" },
+        "role": { "type": "string", "enum": ["admin", "student"], "description": "User access level" },
+        "displayName": { "type": "string", "description": "User profile name" },
+        "photoURL": { "type": "string", "description": "User photo URL" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "course": {
+      "title": "Course",
+      "description": "A study course content with interactive lessons",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique slug / course ID" },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "author": { "type": "string" },
+        "duration": { "type": "string" },
+        "logoColor": { "type": "string" },
+        "iconName": { "type": "string" },
+        "lessons": { "type": "array", "description": "List of lessons directly inside document" }
+      },
+      "required": ["id", "title"]
+    },
+    "progress": {
+      "title": "Progress",
+      "description": "A student's course study progress and results",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "completedLessons": { "type": "array" },
+        "answers": { "type": "object", "description": "Answers mapping map" },
+        "scores": { "type": "object", "description": "Scores mapping map" },
+        "updatedAt": { "type": "string", "description": "Last updated" }
+      },
+      "required": ["uid"]
+    },
+    "post": {
+      "title": "Community Post",
+      "description": "A community thread/post in the Skool-style feed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "likes": { "type": "array", "description": "User IDs who liked" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "authorId", "authorName", "content", "createdAt"]
+    },
+    "comment": {
+      "title": "Post Comment",
+      "description": "A comment on a community post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorPhoto": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "postId", "authorId", "authorName", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": "admin",
+      "description": "System admin explicit lookups"
+    },
+    "/users/{uid}": {
+      "schema": "user",
+      "description": "User profiles read by anyone, written by owner"
+    },
+    "/courses/{courseId}": {
+      "schema": "course",
+      "description": "Courses read by signed-in users, modified only by admins"
+    },
+    "/progress/{uid}": {
+      "schema": "progress",
+      "description": "Individual student progress, written/read only by owner"
+    },
+    "/posts/{postId}": {
+      "schema": "post",
+      "description": "Community posts read and written by validated members"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "comment",
+      "description": "Comments on community posts"
+    }
+  }
+}

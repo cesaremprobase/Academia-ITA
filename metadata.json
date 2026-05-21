@@ -1,0 +1,6 @@
+{
+  "name": "PLATAFORMA ITA HUÁNUCO",
+  "description": "Plataforma interactiva de estudio profesional y discipulado para la creación y gestión dinámica de cursos bíblicos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

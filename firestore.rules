@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // Admin check: verified Google login with entry in 'admins' collection
+    // OR bootstrap exception for user cesarestebandelao@gmail.com
+    function isAdmin() {
+      return isVerified() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "cesarestebandelao@gmail.com"
+      );
+    }
+    
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow get: if isVerified();
+      allow list: if isVerified();
+      
+      allow create: if isVerified() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming()) && (
+        (incoming().role == "student") ||
+        (incoming().role == "admin" && request.auth.token.email == "cesarestebandelao@gmail.com")
+      );
+      
+      allow update: if isVerified() && isValidId(userId) && userId == request.auth.uid && isValidUser(incoming()) && (
+        // Prevent student to admin escalation
+        incoming().role == existing().role
+      );
+      
+      allow delete: if isVerified() && (userId == request.auth.uid || isAdmin());
+    }
+    
+    function isValidUser(data) {
+      return data.uid == request.auth.uid 
+        && data.email is string && data.email.size() <= 256
+        && data.displayName is string && data.displayName.size() <= 256
+        && data.photoURL is string && data.photoURL.size() <= 1024
+        && data.role is string && (data.role == "student" || data.role == "admin")
+        && data.createdAt is string;
+    }
+    
+    // ADMINS LOOKUP
+    match /admins/{uid} {
+      allow read: if isVerified();
+      allow write: if isAdmin();
+    }
+    
+    // COURSES COLLECTION
+    match /courses/{courseId} {
+      allow get: if isVerified() && isValidId(courseId);
+      allow list: if isVerified();
+      allow create: if isAdmin() && isValidId(courseId) && isValidCourse(incoming());
+      allow update: if isAdmin() && isValidId(courseId) && isValidCourse(incoming());
+      allow delete: if isAdmin() && isValidId(courseId);
+    }
+    
+    function isValidCourse(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.title is string && data.title.size() <= 256
+        && data.subtitle is string && data.subtitle.size() <= 512
+        && data.description is string && data.description.size() <= 4096
+        && data.category is string && data.category.size() <= 128
+        && data.author is string && data.author.size() <= 256
+        && data.duration is string && data.duration.size() <= 128
+        && data.logoColor is string && data.logoColor.size() <= 128
+        && data.iconName is string && data.iconName.size() <= 128
+        && data.lessons is list && data.lessons.size() <= 100;
+    }
+    
+    // PROGRESS TRACKS
+    match /progress/{uid} {
+      allow get: if isVerified() && isValidId(uid) && (uid == request.auth.uid || isAdmin());
+      allow list: if isVerified() && (request.auth.uid == uid || isAdmin());
+      allow create: if isVerified() && isValidId(uid) && uid == request.auth.uid && isValidProgress(incoming());
+      allow update: if isVerified() && isValidId(uid) && uid == request.auth.uid && isValidProgress(incoming());
+      allow delete: if isVerified() && (uid == request.auth.uid || isAdmin());
+    }
+    
+    function isValidProgress(data) {
+      return data.uid == request.auth.uid
+        && data.completedLessons is list && data.completedLessons.size() <= 200
+        && data.answers is map
+        && data.scores is map;
+    }
+    
+    // SKOOL-STYLE COMMUNITY FEED (POSTS)
+    match /posts/{postId} {
+      allow get: if isVerified() && isValidId(postId);
+      allow list: if isVerified();
+      
+      allow create: if isVerified() && isValidId(postId) && isValidPost(incoming());
+      
+      allow update: if isVerified() && isValidId(postId) && (
+        // Path 1: Original Author or System Admin edits core title/content
+        ((request.auth.uid == existing().authorId || isAdmin()) && isValidPost(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'updatedAt']))
+        ||
+        // Path 2: Any student can click "Like", triggering structured self-append or self-remove
+        (isValidPost(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['likes']) && (
+          (incoming().likes.size() == existing().likes.size() + 1 && incoming().likes.hasAll(existing().likes) && incoming().likes.hasAll([request.auth.uid]))
+          ||
+          (incoming().likes.size() == existing().likes.size() - 1 && existing().likes.hasAll(incoming().likes) && !incoming().likes.hasAll([request.auth.uid]))
+        ))
+      );
+      
+      allow delete: if isVerified() && (request.auth.uid == existing().authorId || isAdmin());
+    }
+    
+    function isValidPost(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 128
+        && data.authorPhoto is string && data.authorPhoto.size() <= 1024
+        && data.title is string && data.title.size() <= 256
+        && data.content is string && data.content.size() <= 8192
+        && data.likes is list && data.likes.size() <= 1000
+        && data.createdAt is string;
+    }
+    
+    // COMMENTS ON FEED POSTS
+    match /posts/{postId}/comments/{commentId} {
+      allow get: if isVerified() && isValidId(postId) && isValidId(commentId);
+      allow list: if isVerified() && isValidId(postId);
+      allow create: if isVerified() && isValidId(postId) && isValidId(commentId) && isValidComment(incoming());
+      allow update: if isVerified() && isValidId(postId) && isValidId(commentId) && (request.auth.uid == existing().authorId || isAdmin()) && isValidComment(incoming());
+      allow delete: if isVerified() && isValidId(postId) && isValidId(commentId) && (request.auth.uid == existing().authorId || isAdmin());
+    }
+    
+    function isValidComment(data) {
+      return data.id is string && data.id.size() <= 128
+        && data.postId is string && data.postId.size() <= 128
+        && data.authorId == request.auth.uid
+        && data.authorName is string && data.authorName.size() <= 128
+        && data.authorPhoto is string && data.authorPhoto.size() <= 1024
+        && data.content is string && data.content.size() <= 4096
+        && data.createdAt is string;
+    }
+  }
+}
